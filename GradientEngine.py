@@ -90,8 +90,8 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, pa
                 # location = tuple(loc_temp)
 
                 copies[idx] = np.clip(copies[idx] + action, input_range[0], input_range[1])
-
-                if true_labels[idx] != predict(copies[idx], extra):
+                new_label = predict(copies[idx], extra)
+                if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):
                     misclass = True
                     success_count += 1
             similar_avg += similarity(originals[idx], copies[idx], (0, 1))

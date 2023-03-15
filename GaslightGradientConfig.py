@@ -23,7 +23,7 @@ input_range = (0, 1)
 
 target = 6
 
-model_name = "Models/PPO_no_punish_one_try_untargeted.zip"
+model_name = "Models/PPO_untargeted.zip"
 
 param_file = None
 

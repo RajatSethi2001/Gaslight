@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from gym.spaces import Box, Tuple
+from utils import similarity
 
 class GradientEnv(gym.Env):
     def __init__(self, predict, extra, input_shape, input_range, target):
@@ -42,7 +43,7 @@ class GradientEnv(gym.Env):
         self.input = np.clip(self.input + action, self.input_range[0], self.input_range[1])
         label = self.predict(self.input, self.extra)
 
-        new_sim = self.similarity(self.original, self.input)
+        new_sim = similarity(self.original, self.input, self.input_range)
         self.current_sim = new_sim
 
         reward = 0
@@ -72,15 +73,3 @@ class GradientEnv(gym.Env):
 
     def render(self):
         print(f"Actions: {self.actions}")
-
-    def similarity(self, original, perturb):
-        #Similarity is measured by the distance between the original array and the perturbed array.
-        range = self.input_range[1] - self.input_range[0] 
-        euclid_distance = 0
-        for idx, _ in np.ndenumerate(perturb):
-            # Find the difference in values, normalize the value, then square it.
-            value_distance = (perturb[idx] - original[idx]) ** 2
-            euclid_distance += value_distance
-        
-        # Renormalize the final result, take the square root, then subtract that value from 1 to find similarity.
-        return 1 - math.sqrt(euclid_distance / (math.prod(self.input_shape) * (range ** 2)))
