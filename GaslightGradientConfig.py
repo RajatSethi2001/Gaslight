@@ -25,10 +25,8 @@ target = 6
 
 model_name = "Models/PPO_no_punish_one_try_untargeted.zip"
 
-framework = "PPO"
-
 param_file = None
 
 save_interval = 1000
 
-gradientRun(predict, extra, input_shape, input_range, target, model_name, framework, param_file, save_interval)
+gradientRun(predict, extra, input_shape, input_range, target, model_name, param_file, save_interval)

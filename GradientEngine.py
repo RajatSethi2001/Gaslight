@@ -26,7 +26,7 @@ class GaslightCheckpoint(CheckpointCallback):
                 self.model.save(self.rl_model)
         return True
     
-def gradientRun(predict, extra, input_shape, input_range, target, model_name, framework="PPO", param_file=None, save_interval=100):
+def gradientRun(predict, extra, input_shape, input_range, target, model_name, param_file=None, save_interval=100):
     #Hyperparameters collected from Optuna.py
     hyperparams = {}
     if param_file is not None:
@@ -44,25 +44,13 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, fr
     vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
     checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
-    if framework not in {"A2C", "PPO", "TD3", "SAC"}:
-        raise Exception(f"Unknown Framework: {framework} - Available Frameworks: (A2C, PPO, TD3, SAC)")
-
     if model_name is not None and exists(model_name):
-        model_attack = eval(f"{framework}.load(\"{model_name}\", env=vec_env, n_steps=256, **hyperparams)")
+        model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, n_steps=256, **hyperparams)")
     
     #RL models to use for testing.
     else:
         policy_name = "MlpPolicy"
-        if framework == "A2C":
-            model_attack = A2C(policy_name, vec_env, **hyperparams)
-        elif framework == "PPO":
-            model_attack = PPO(policy_name, vec_env, n_steps=256, **hyperparams)
-        elif framework == "TD3":
-            n_actions = vec_env.action_space.shape[-1]
-            action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-            model_attack = TD3(policy_name, vec_env, buffer_size=100000, action_noise=action_noise, **hyperparams)
-        elif framework == "SAC":
-            model_attack = SAC(policy_name, vec_env, buffer_size=100000, **hyperparams)
+        model_attack = PPO(policy_name, vec_env, n_steps=256, **hyperparams)
     
     originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     true_labels = [predict(x, extra) for x in originals]

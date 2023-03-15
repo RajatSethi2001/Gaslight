@@ -47,7 +47,7 @@ class GradientEnv(gym.Env):
 
         reward = 0
         done = False
-        if label != self.true:
+        if (self.target is None and label != self.true) or (self.target is not None and label == self.target):
             reward = new_sim
             done = True
             print(f"Original: {self.true}\nFake: {label}\nSimilarity: {round(new_sim * 100, 3)}")
