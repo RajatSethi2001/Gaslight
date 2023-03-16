@@ -21,11 +21,11 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-target = 6
+target = None
 
-model_name = "Models/PPO_untargeted.zip"
+model_name = "Models/PPO_50_params.zip"
 
-param_file = None
+param_file = "Params/more_params.pkl"
 
 save_interval = 1000
 

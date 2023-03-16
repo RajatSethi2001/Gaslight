@@ -32,6 +32,9 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, pa
     if param_file is not None:
         study = pickle.load(open(param_file, 'rb'))
         hyperparams = study.best_params
+
+        if hyperparams['batch_size'] > hyperparams['n_steps']:
+            hyperparams['batch_size'] = hyperparams['n_steps']
     
     # env = GradientEnv(predict, extra, input_shape, input_range, target)
     env_kwargs = {
@@ -45,12 +48,12 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, pa
     checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
     if model_name is not None and exists(model_name):
-        model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, n_steps=256, **hyperparams)")
+        model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, **hyperparams)")
     
     #RL models to use for testing.
     else:
         policy_name = "MlpPolicy"
-        model_attack = PPO(policy_name, vec_env, n_steps=256, **hyperparams)
+        model_attack = PPO(policy_name, vec_env, **hyperparams)
     
     originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     true_labels = [predict(x, extra) for x in originals]

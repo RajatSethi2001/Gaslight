@@ -14,7 +14,7 @@ class GradientEnv(gym.Env):
         self.distance = input_range[1] - input_range[0]
         self.target = target
 
-        self.eps = 1.0
+        self.eps = 0.5
 
         self.observation_space = Box(low=input_range[0], high=input_range[1], shape=(2,) + input_shape, dtype=np.float32)
 
@@ -51,13 +51,14 @@ class GradientEnv(gym.Env):
         if (self.target is None and label != self.true) or (self.target is not None and label == self.target):
             reward = new_sim
             done = True
-            print(f"Original: {self.true}\nFake: {label}\nSimilarity: {round(new_sim * 100, 3)}")
-            self.render()
+            # print(f"Original: {self.true}\nFake: {label}\nSimilarity: {round(new_sim * 100, 3)}")
+            # self.render()
         # elif self.actions % 100 == 0:
         else:
+            reward = 0.001
             done = True
-            print(f"Original: {self.true}\nFake: {label}\nSimilarity: {round(new_sim * 100, 3)}")
-            self.render()
+            # print(f"Original: {self.true}\nFake: {label}\nSimilarity: {round(new_sim * 100, 3)}")
+            # self.render()
         
         return (self.original, self.input), reward, done, {}
 

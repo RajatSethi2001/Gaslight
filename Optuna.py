@@ -30,7 +30,7 @@ input_range = (0, 1)
 
 target = None
 
-param_file = "Params/test.pkl"
+param_file = "Params/more_params.pkl"
 
 #How many trials to run for this iteration.
 trials = 20
@@ -60,14 +60,16 @@ class ParamFinder:
         pickle.dump(self.study, open(self.param_file, 'wb'))
     
     def get_ppo(self, trial):
-        n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64])
-        batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64])
-        gamma = trial.suggest_categorical("gamma", [0.95, 0.98, 0.99, 0.995, 0.999])
-        gae_lambda = trial.suggest_categorical("gae_lambda", [0.9, 0.92, 0.95, 0.98, 0.99, 1.0])
-
-        learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1)
-        ent_coef = trial.suggest_float("ent_coef", 1e-5, 1e-1)
-        vf_coef = trial.suggest_float("vf_coef", 1e-2, 1)
+        batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256, 512])
+        n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64, 128, 256, 512, 1024, 2048])
+        gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
+        learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True)
+        ent_coef = trial.suggest_float("ent_coef", 0.00000001, 0.1, log=True)
+        clip_range = trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3, 0.4])
+        n_epochs = trial.suggest_categorical("n_epochs", [1, 5, 10, 20])
+        gae_lambda = trial.suggest_categorical("gae_lambda", [0.8, 0.9, 0.92, 0.95, 0.98, 0.99, 1.0])
+        max_grad_norm = trial.suggest_categorical("max_grad_norm", [0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 5])
+        vf_coef = trial.suggest_float("vf_coef", 0, 1)
 
         if batch_size > n_steps:
             batch_size = n_steps
@@ -79,7 +81,10 @@ class ParamFinder:
             "gae_lambda": gae_lambda,
             "learning_rate": learning_rate,
             "ent_coef": ent_coef,
-            "vf_coef": vf_coef
+            "vf_coef": vf_coef,
+            "clip_range": clip_range,
+            "n_epochs": n_epochs,
+            "max_grad_norm": max_grad_norm
         }
 
     def optimize_framework(self, trial):
