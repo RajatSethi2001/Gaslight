@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use("Qt5Agg")
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
@@ -26,34 +26,52 @@ class GaslightCheckpoint(CheckpointCallback):
                 self.model.save(self.rl_model)
         return True
     
-def gradientRun(predict, extra, input_shape, input_range, target, model_name, param_file=None, save_interval=100):
-    #Hyperparameters collected from Optuna.py
-    hyperparams = {}
-    if param_file is not None:
-        study = pickle.load(open(param_file, 'rb'))
-        hyperparams = study.best_params
+def gradientRun(predict, extra, input_shape, input_range, eps, target, model_name, framework, param_file=None, save_interval=100):
+    if framework == "PPO":
+        #Hyperparameters collected from Optuna.py
+        hyperparams = {}
+        if param_file is not None:
+            study = pickle.load(open(param_file, 'rb'))
+            hyperparams = study.best_params
 
-        if hyperparams['batch_size'] > hyperparams['n_steps']:
-            hyperparams['batch_size'] = hyperparams['n_steps']
-    
-    # env = GradientEnv(predict, extra, input_shape, input_range, target)
-    env_kwargs = {
-        "predict": predict,
-        "extra": extra,
-        "input_shape": input_shape,
-        "input_range": input_range,
-        "target": target
-    }
-    vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
-    checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
+            if hyperparams['batch_size'] > hyperparams['n_steps']:
+                hyperparams['batch_size'] = hyperparams['n_steps']
+            
+            hyperparams['net_arch'] = {
+                "small": dict(pi=[64, 64], vf=[64, 64]),
+                "medium": dict(pi=[256, 256], vf=[256, 256]),
+            }[hyperparams['net_arch']]
+        
+        # env = GradientEnv(predict, extra, input_shape, input_range, target)
+        env_kwargs = {
+            "predict": predict,
+            "extra": extra,
+            "input_shape": input_shape,
+            "input_range": input_range,
+            "eps": eps,
+            "target": target
+        }
+        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
+        checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
-    if model_name is not None and exists(model_name):
-        model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, **hyperparams)")
-    
-    #RL models to use for testing.
-    else:
-        policy_name = "MlpPolicy"
-        model_attack = PPO(policy_name, vec_env, **hyperparams)
+        if model_name is not None and exists(model_name):
+            model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, **hyperparams)")
+        #RL models to use for testing.
+        else:
+            policy_name = "MlpPolicy"
+            model_attack = PPO(policy_name, vec_env, **hyperparams)
+
+    elif framework == "TD3":
+        #Hyperparameters collected from Optuna.py
+        hyperparams = {}
+        if param_file is not None:
+            study = pickle.load(open(param_file, 'rb'))
+            hyperparams = study.best_params
+            
+            hyperparams['net_arch'] = {
+                "small": dict(pi=[64, 64], vf=[64, 64]),
+                "medium": dict(pi=[256, 256], vf=[256, 256]),
+            }[hyperparams['net_arch']]
     
     originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     true_labels = [predict(x, extra) for x in originals]
@@ -71,7 +89,7 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, pa
 
     ax[2].plot(timesteps, success_list)
     ax[2].set_title("Successes")
-    for _ in range(100):
+    for _ in range(300):
         model_attack.learn(3000, progress_bar=True, callback=checkpoint_callback)
         copies = [np.copy(x) for x in originals]
         similar_avg = 0
@@ -83,21 +101,14 @@ def gradientRun(predict, extra, input_shape, input_range, target, model_name, pa
             action_count = 0
             while not misclass and action_count < 1:
                 action_count += 1
-                action, _ = model_attack.predict((originals[idx], copies[idx]))
-
-                # delta = action[0]
-                # location = action[1::]
-                # loc_temp = []
-                # for dim in range(len(location)):
-                #     loc_temp.append(int(round((copies[idx].shape[dim] - 1) * location[dim])))
-                # location = tuple(loc_temp)
+                action, _ = model_attack.predict(copies[idx])
 
                 copies[idx] = np.clip(copies[idx] + action, input_range[0], input_range[1])
                 new_label = predict(copies[idx], extra)
                 if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):
                     misclass = True
                     success_count += 1
-            similar_avg += similarity(originals[idx], copies[idx], (0, 1))
+            similar_avg += input_range[1] - input_range[0] - np.average(abs(originals[idx] - copies[idx]))
             action_avg += action_count
             
         similar_list.append(similar_avg / len(copies))
