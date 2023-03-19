@@ -41,6 +41,9 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
                 "small": dict(pi=[64, 64], vf=[64, 64]),
                 "medium": dict(pi=[256, 256], vf=[256, 256]),
             }[hyperparams['net_arch']]
+
+            hyperparams['policy_kwargs'] = {'net_arch': hyperparams['net_arch']}
+            del hyperparams['net_arch']
         
         # env = GradientEnv(predict, extra, input_shape, input_range, target)
         env_kwargs = {
@@ -69,9 +72,41 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
             hyperparams = study.best_params
             
             hyperparams['net_arch'] = {
-                "small": dict(pi=[64, 64], vf=[64, 64]),
-                "medium": dict(pi=[256, 256], vf=[256, 256]),
+                "small": [64, 64],
+                "medium": [256, 256],
+                "big": [400, 300],
             }[hyperparams['net_arch']]
+
+            hyperparams['policy_kwargs'] = {'net_arch': hyperparams['net_arch']}
+            del hyperparams['net_arch']
+
+            if hyperparams['noise_type'] == 'normal':
+                hyperparams['action_noise'] = NormalActionNoise(
+                    mean=np.zeros(input_shape), sigma=hyperparams['noise_std'] * np.ones(input_shape)
+                )
+            elif hyperparams['noise_type'] == 'ornstein-uhlenbeck':
+                hyperparams['action_noise'] = OrnsteinUhlenbeckActionNoise(
+                    mean=np.zeros(input_shape), sigma=hyperparams['noise_std'] * np.ones(input_shape)
+                )
+            
+            del hyperparams['noise_type']
+            del hyperparams['noise_std']
+
+            hyperparams['gradient_steps'] = hyperparams['train_freq']
+
+        env = GradientEnv(predict, extra, input_shape, input_range, eps, target)
+        checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
+
+        if model_name is not None and exists(model_name):
+            model_attack = eval(f"TD3.load(\"{model_name}\", env=env, **hyperparams)")
+        #RL models to use for testing.
+        else:
+            policy_name = "MlpPolicy"
+            model_attack = TD3(policy_name, env, **hyperparams)
+    
+    else:
+        print(f"Framework {framework} does not exist. Available frameworks are (PPO, TD3)")
+        exit()
     
     originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     true_labels = [predict(x, extra) for x in originals]

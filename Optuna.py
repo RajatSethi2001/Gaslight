@@ -6,8 +6,9 @@ import tensorflow as tf
 
 from GradientEnv import GradientEnv
 from os.path import exists
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, TD3
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from tensorflow.keras import models
 from torch import nn as nn
 from utils import similarity
@@ -28,7 +29,7 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-eps = 0.1
+eps = 0.25
 
 target = None
 
@@ -36,13 +37,13 @@ model_name = None
 
 framework = "PPO"
 
-param_file = "Params/net_arch.pkl"
+param_file = "Params/PPO_25.pkl"
 
 #How many trials to run for this iteration.
 trials = 20
 
 #How many timesteps to run through per trial.
-timesteps = 40000
+timesteps = 20000
 
 class ParamFinder:
     def __init__(self, predict, extra, input_shape, input_range, eps, target, model_name, framework, param_file, trials, timesteps):
@@ -108,40 +109,84 @@ class ParamFinder:
         learning_rate = trial.suggest_float("learning_rate", 1e-5, 1, log=True)
         batch_size = trial.suggest_categorical("batch_size", [16, 32, 64, 100, 128, 256, 512, 1024, 2048])
         buffer_size = trial.suggest_categorical("buffer_size", [int(1e4), int(1e5), int(1e6)])
-        # Polyak coeff
         tau = trial.suggest_categorical("tau", [0.001, 0.005, 0.01, 0.02, 0.05, 0.08])
 
         train_freq = trial.suggest_categorical("train_freq", [1, 4, 8, 16, 32, 64, 128, 256, 512])
         gradient_steps = train_freq
 
         noise_type = trial.suggest_categorical("noise_type", ["ornstein-uhlenbeck", "normal", None])
-        noise_std = trial.suggest_uniform("noise_std", 0, 1)
+        noise_std = trial.suggest_float("noise_std", 0, 1)
 
-        # NOTE: Add "verybig" to net_arch when tuning HER
         net_arch = trial.suggest_categorical("net_arch", ["small", "medium", "big"])
+
+        net_arch = {
+            "small": [64, 64],
+            "medium": [256, 256],
+            "big": [400, 300],
+        }[net_arch]
+
+        hyperparams = {
+            "gamma": gamma,
+            "learning_rate": learning_rate,
+            "batch_size": batch_size,
+            "buffer_size": buffer_size,
+            "train_freq": train_freq,
+            "gradient_steps": gradient_steps,
+            "policy_kwargs": dict(net_arch=net_arch),
+            "tau": tau,
+        }
+
+        if noise_type == "normal":
+            hyperparams["action_noise"] = NormalActionNoise(
+                mean=np.zeros(self.input_shape), sigma=noise_std * np.ones(self.input_shape)
+            )
+        elif noise_type == "ornstein-uhlenbeck":
+            hyperparams["action_noise"] = OrnsteinUhlenbeckActionNoise(
+                mean=np.zeros(self.input_shape), sigma=noise_std * np.ones(self.input_shape)
+            )
         
+        return hyperparams
+
     def optimize_framework(self, trial):
         #Save the current study in the pickle file.
         pickle.dump(self.study, open(self.param_file, 'wb'))
 
         env = GradientEnv(self.predict, self.extra, self.input_shape, self.input_range, self.eps, self.target)
-
-        hyperparams = {}
-        #Guess the optimal hyperparameters for testing in this trial.
-        hyperparams = self.get_ppo(trial)
-        if self.model_name is not None and exists(self.model_name):
-            model = eval(f"PPO.load(\"{self.model_name}\", env=env, **hyperparams)")
-        #RL models to use for testing.
+        
+        if self.framework == "PPO":
+            hyperparams = {}
+            #Guess the optimal hyperparameters for testing in this trial.
+            hyperparams = self.get_ppo(trial)
+            if self.model_name is not None and exists(self.model_name):
+                model = eval(f"PPO.load(\"{self.model_name}\", env=env, **hyperparams)")
+            #RL models to use for testing.
+            else:
+                policy_name = "MlpPolicy"
+                model = PPO(policy_name, env, **hyperparams)
+        
+        elif self.framework == "TD3":
+            hyperparams = {}
+            #Guess the optimal hyperparameters for testing in this trial.
+            hyperparams = self.get_td3(trial)
+            if self.model_name is not None and exists(self.model_name):
+                model = eval(f"TD3.load(\"{self.model_name}\", env=env, **hyperparams)")
+            #RL models to use for testing.
+            else:
+                policy_name = "MlpPolicy"
+                model = TD3(policy_name, env, **hyperparams)
+        
         else:
-            policy_name = "MlpPolicy"
-            model = PPO(policy_name, env, **hyperparams)
+            print(f"Framework {self.framework} does not exist. Available frameworks are (PPO, TD3)")
+            exit()
 
         #Return the best reward as the score for this trial.
         originals = [np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape) for _ in range(100)]
         true_labels = [predict(x, self.extra) for x in originals]
 
+        max_score = 0
+        increases = 0
+
         samples = 20
-        reward_avg = 0
         for _ in range(samples):
             #Run the trial for the designated number of timesteps.
             model.learn(self.timesteps / samples, progress_bar=True)
@@ -164,12 +209,16 @@ class ParamFinder:
                 similar_avg += self.input_range[1] - self.input_range[0] - np.average(abs(originals[idx] - copies[idx]))
 
             similar_avg /= len(originals)
-            reward_avg += success_count + similar_avg
+            score = success_count + similar_avg
 
-        return reward_avg / samples
+            if score > max_score:
+                increases += 1
+                max_score = score
+
+        return increases
 
 if __name__=='__main__':
-    param_finder = ParamFinder(predict, extra, input_shape, input_range, eps, target, model_name, param_file, trials, timesteps)
+    param_finder = ParamFinder(predict, extra, input_shape, input_range, eps, target, model_name, framework, param_file, trials, timesteps)
     param_finder.run()
 
 
