@@ -32,20 +32,13 @@ class GradientEnv(gym.Env):
         self.input = np.clip(self.input + action, self.input_range[0], self.input_range[1])
         label = self.predict(self.input, self.extra)
 
-        # new_sim = similarity(self.original, self.input, self.input_range)
-        distort = self.input_range[1] - self.input_range[0] - np.average(abs(self.original - self.input))
+        similarity = self.input_range[1] - self.input_range[0] - np.average(abs(self.original - self.input))
 
         reward = 0
-        done = False
         if (self.target is None and label != self.true) or (self.target is not None and label == self.target):
-            reward = distort
-            done = True
-        # elif self.actions % 100 == 0:
-        else:
-            reward = -1
-            done = True
+            reward = similarity
         
-        return self.input, reward, done, {}
+        return self.input, reward, True, {}
 
     def reset(self):
         self.input = np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape)

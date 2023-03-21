@@ -21,15 +21,15 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-eps = 0.25
+eps = 1.0
 
 target = None
 
-model_name = "Models/PPO.zip"
+model_name = "Models/PPO_Reward.zip"
 
 framework = "PPO"
 
-param_file = "Params/PPO_25.pkl"
+param_file = "Params/PPO_Reward.pkl"
 
 save_interval = 1000
 

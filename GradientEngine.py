@@ -36,14 +36,6 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
 
             if hyperparams['batch_size'] > hyperparams['n_steps']:
                 hyperparams['batch_size'] = hyperparams['n_steps']
-            
-            hyperparams['net_arch'] = {
-                "small": dict(pi=[64, 64], vf=[64, 64]),
-                "medium": dict(pi=[256, 256], vf=[256, 256]),
-            }[hyperparams['net_arch']]
-
-            hyperparams['policy_kwargs'] = {'net_arch': hyperparams['net_arch']}
-            del hyperparams['net_arch']
         
         # env = GradientEnv(predict, extra, input_shape, input_range, target)
         env_kwargs = {
@@ -70,15 +62,6 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
         if param_file is not None:
             study = pickle.load(open(param_file, 'rb'))
             hyperparams = study.best_params
-            
-            hyperparams['net_arch'] = {
-                "small": [64, 64],
-                "medium": [256, 256],
-                "big": [400, 300],
-            }[hyperparams['net_arch']]
-
-            hyperparams['policy_kwargs'] = {'net_arch': hyperparams['net_arch']}
-            del hyperparams['net_arch']
 
             if hyperparams['noise_type'] == 'normal':
                 hyperparams['action_noise'] = NormalActionNoise(
@@ -111,7 +94,7 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
     originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     true_labels = [predict(x, extra) for x in originals]
     similar_list = []
-    action_list = []
+    reward_list = []
     success_list = []
     timesteps = []
     plt.ion()
@@ -119,8 +102,8 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
     ax[0].plot(timesteps, similar_list)
     ax[0].set_title("Similarity")
 
-    ax[1].plot(timesteps, action_list)
-    ax[1].set_title("Actions")
+    ax[1].plot(timesteps, reward_list)
+    ax[1].set_title("Rewards")
 
     ax[2].plot(timesteps, success_list)
     ax[2].set_title("Successes")
@@ -128,26 +111,21 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
         model_attack.learn(3000, progress_bar=True, callback=checkpoint_callback)
         copies = [np.copy(x) for x in originals]
         similar_avg = 0
-        action_avg = 0
+        reward_avg = 0
         success_count = 0
         for idx in range(len(copies)):
-            print(f"Copy #: {idx}")
-            misclass = False
-            action_count = 0
-            while not misclass and action_count < 1:
-                action_count += 1
-                action, _ = model_attack.predict(copies[idx])
-
-                copies[idx] = np.clip(copies[idx] + action, input_range[0], input_range[1])
-                new_label = predict(copies[idx], extra)
-                if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):
-                    misclass = True
-                    success_count += 1
-            similar_avg += input_range[1] - input_range[0] - np.average(abs(originals[idx] - copies[idx]))
-            action_avg += action_count
+            action, _ = model_attack.predict(copies[idx])
+            copies[idx] = np.clip(copies[idx] + action, input_range[0], input_range[1])
+            new_label = predict(copies[idx], extra)
+            reward = input_range[1] - input_range[0] - np.average(abs(originals[idx] - copies[idx]))
+            if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):
+                success_count += 1
+                reward_avg += reward
+                
+            similar_avg += reward
             
         similar_list.append(similar_avg / len(copies))
-        action_list.append(action_avg / len(copies))
+        reward_list.append(reward_avg / len(copies))
         success_list.append(success_count)
         timesteps = list(range(len(similar_list)))
 
@@ -158,16 +136,12 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
         ax[0].plot(timesteps, similar_list)
         ax[0].set_title("Similarity")
 
-        ax[1].plot(timesteps, action_list)
-        ax[1].set_title("Actions")
+        ax[1].plot(timesteps, reward_list)
+        ax[1].set_title("Rewards")
 
         ax[2].plot(timesteps, success_list)
         ax[2].set_title("Successes")
 
-        print(similar_list)
-        print(action_list)
-        print(success_list)
-        print(timesteps)
         figure.canvas.draw()
         figure.canvas.flush_events()
         time.sleep(0.1)
