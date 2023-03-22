@@ -7,11 +7,11 @@ import time
 
 from os.path import exists
 from GradientEnv import GradientEnv
-from stable_baselines3 import PPO, TD3, A2C, SAC
+from stable_baselines3 import PPO, TD3
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
-from utils import similarity
+from utils import distance
 
 #Callback class that saves the model after a set interval of steps.
 class GaslightCheckpoint(CheckpointCallback):
@@ -26,10 +26,12 @@ class GaslightCheckpoint(CheckpointCallback):
                 self.model.save(self.rl_model)
         return True
     
-def gradientRun(predict, extra, input_shape, input_range, eps, target, model_name, framework, param_file=None, save_interval=100):
+def gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework="PPO", save_interval=0, param_file=None):
     if framework == "PPO":
         #Hyperparameters collected from Optuna.py
         hyperparams = {}
+        net_arch = dict(pi=[256, 256], vf=[256, 256])
+        hyperparams['policy_kwargs'] = dict(net_arch=net_arch)
         if param_file is not None:
             study = pickle.load(open(param_file, 'rb'))
             hyperparams = study.best_params
@@ -37,24 +39,21 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
             if hyperparams['batch_size'] > hyperparams['n_steps']:
                 hyperparams['batch_size'] = hyperparams['n_steps']
         
-        # env = GradientEnv(predict, extra, input_shape, input_range, target)
         env_kwargs = {
             "predict": predict,
             "extra": extra,
             "input_shape": input_shape,
             "input_range": input_range,
-            "eps": eps,
-            "target": target
+            "max_delta": max_delta,
+            "target": target,
+            "norm": norm
         }
         vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
         checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
+        model_attack = PPO("MlpPolicy", vec_env, **hyperparams)
         if model_name is not None and exists(model_name):
-            model_attack = eval(f"PPO.load(\"{model_name}\", env=vec_env, **hyperparams)")
-        #RL models to use for testing.
-        else:
-            policy_name = "MlpPolicy"
-            model_attack = PPO(policy_name, vec_env, **hyperparams)
+            model_attack.set_parameters(model_name)
 
     elif framework == "TD3":
         #Hyperparameters collected from Optuna.py
@@ -77,67 +76,56 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
 
             hyperparams['gradient_steps'] = hyperparams['train_freq']
 
-        env = GradientEnv(predict, extra, input_shape, input_range, eps, target)
+        env = GradientEnv(predict, extra, input_shape, input_range, max_delta, target, norm)
         checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
+        model_attack = TD3("MlpPolicy", env, **hyperparams)
         if model_name is not None and exists(model_name):
-            model_attack = eval(f"TD3.load(\"{model_name}\", env=env, **hyperparams)")
-        #RL models to use for testing.
-        else:
-            policy_name = "MlpPolicy"
-            model_attack = TD3(policy_name, env, **hyperparams)
+            model_attack.set_parameters(model_name)
     
     else:
         print(f"Framework {framework} does not exist. Available frameworks are (PPO, TD3)")
         exit()
     
-    originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
+    originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(1000)]
     true_labels = [predict(x, extra) for x in originals]
-    similar_list = []
-    reward_list = []
-    success_list = []
+
     timesteps = []
+    l2_list = []
+    linf_list = []
+    success_list = []
+    
     plt.ion()
     figure, ax = plt.subplots(1, 3, figsize=(18, 6))
-    ax[0].plot(timesteps, similar_list)
-    ax[0].set_title("Similarity")
-
-    ax[1].plot(timesteps, reward_list)
-    ax[1].set_title("Rewards")
-
-    ax[2].plot(timesteps, success_list)
-    ax[2].set_title("Successes")
-    for _ in range(300):
-        model_attack.learn(3000, progress_bar=True, callback=checkpoint_callback)
-        copies = [np.copy(x) for x in originals]
-        similar_avg = 0
-        reward_avg = 0
+    for timestep in range(500):
+        model_attack.learn(5000, progress_bar=True, callback=checkpoint_callback)
+        l2_avg = 0
+        linf_avg = 0
         success_count = 0
-        for idx in range(len(copies)):
-            action, _ = model_attack.predict(copies[idx])
-            copies[idx] = np.clip(copies[idx] + action, input_range[0], input_range[1])
-            new_label = predict(copies[idx], extra)
-            reward = input_range[1] - input_range[0] - np.average(abs(originals[idx] - copies[idx]))
+        for idx in range(len(originals)):
+            action, _ = model_attack.predict(originals[idx])
+            adv = np.clip(originals[idx] + action, input_range[0], input_range[1])
+            new_label = predict(adv, extra)
+            
+            l2_avg += distance(adv, originals[idx], 2)
+            linf_avg += distance(adv, originals[idx], np.inf)
             if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):
                 success_count += 1
-                reward_avg += reward
-                
-            similar_avg += reward
-            
-        similar_list.append(similar_avg / len(copies))
-        reward_list.append(reward_avg / len(copies))
-        success_list.append(success_count)
-        timesteps = list(range(len(similar_list)))
 
+        timesteps.append(timestep)
+        l2_list.append(l2_avg / len(originals))
+        linf_list.append(linf_avg / len(originals))
+        success_list.append(success_count)
+        
         ax[0].clear()
         ax[1].clear()
         ax[2].clear()
 
-        ax[0].plot(timesteps, similar_list)
-        ax[0].set_title("Similarity")
+        ax[0].plot(timesteps, l2_list)
+        ax[0].set_title("L-2")
 
-        ax[1].plot(timesteps, reward_list)
-        ax[1].set_title("Rewards")
+        ax[1].plot(timesteps, linf_list)
+        ax[1].set_title("L-Inf")
 
         ax[2].plot(timesteps, success_list)
         ax[2].set_title("Successes")
@@ -145,5 +133,4 @@ def gradientRun(predict, extra, input_shape, input_range, eps, target, model_nam
         figure.canvas.draw()
         figure.canvas.flush_events()
         time.sleep(0.1)
-
-    plt.show()          
+       

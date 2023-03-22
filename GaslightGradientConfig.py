@@ -6,8 +6,6 @@ from tensorflow.keras import models
 
 
 def predict(image, extra=None):
-    # tf.keras.backend.clear_session()
-    # gc.collect()
     victim = extra["model"]
     image_input = image.reshape((1,) + image.shape)
     image_output = np.argmax(list(victim(image_input).numpy()[0]))
@@ -21,16 +19,18 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-eps = 1.0
+max_delta = 0.2
 
 target = None
 
-model_name = "Models/PPO_Reward.zip"
+norm = 2
+
+model_name = "Models/PPO_Medium.zip"
 
 framework = "PPO"
 
-param_file = "Params/PPO_Reward.pkl"
-
 save_interval = 1000
 
-gradientRun(predict, extra, input_shape, input_range, eps, target, model_name, framework, param_file, save_interval)
+param_file = "Params/PPO_Medium.pkl"
+
+gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)
