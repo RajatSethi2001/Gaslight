@@ -17,7 +17,7 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-max_delta = 0.2
+max_delta = 0.4
 
 target = None
 
@@ -27,7 +27,7 @@ model_name = None
 
 framework = "PPO"
 
-param_file = "Params/PPO_Medium.pkl"
+param_file = "Params/L-2.pkl"
 
 #How many trials to run for this iteration.
 trials = 20

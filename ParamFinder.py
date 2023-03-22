@@ -130,6 +130,7 @@ class ParamFinder:
         originals = [np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape) for _ in range(1000)]
         true_labels = [self.predict(x, self.extra) for x in originals]
 
+        self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, np.zeros(self.input_shape), self.norm)
         rewards = []
 
         for _ in range(self.samples):
@@ -142,8 +143,9 @@ class ParamFinder:
                 new_label = self.predict(adv, self.extra)
 
                 if (self.target is None and new_label != true_labels[idx]) or (self.target is not None and new_label == self.target):
-                    reward_avg += distance(adv, originals[idx], self.norm)
+                    reward_avg += self.max_reward - distance(adv, originals[idx], self.norm)
 
+            reward_avg /= len(originals)
             rewards.append(reward_avg)
 
         x = list(range(self.samples))

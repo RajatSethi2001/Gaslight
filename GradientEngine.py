@@ -106,7 +106,7 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
             action, _ = model_attack.predict(originals[idx])
             adv = np.clip(originals[idx] + action, input_range[0], input_range[1])
             new_label = predict(adv, extra)
-            
+
             l2_avg += distance(adv, originals[idx], 2)
             linf_avg += distance(adv, originals[idx], np.inf)
             if (target is None and new_label != true_labels[idx]) or (target is not None and new_label == target):

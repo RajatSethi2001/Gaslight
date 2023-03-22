@@ -2,7 +2,7 @@ import gym
 import math
 import numpy as np
 
-from gym.spaces import Box, Tuple
+from gym.spaces import Box
 from utils import distance
 
 class GradientEnv(gym.Env):
@@ -21,13 +21,15 @@ class GradientEnv(gym.Env):
         self.original = np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape)
         self.true_label = self.predict(self.original, self.extra)
 
+        self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, np.zeros(self.input_shape), self.norm)
+
     def step(self, action):
         adv = np.clip(self.original + action, self.input_range[0], self.input_range[1])
         label = self.predict(adv, self.extra)
 
         reward = 0
         if (self.target is None and label != self.true_label) or (self.target is not None and label == self.target):
-            reward = distance(adv, self.original, self.norm)
+            reward = self.max_reward - distance(adv, self.original, self.norm)
         
         return adv, reward, True, {}
 

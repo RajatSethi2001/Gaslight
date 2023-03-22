@@ -19,18 +19,18 @@ input_shape = (28, 28, 1)
 
 input_range = (0, 1)
 
-max_delta = 0.2
+max_delta = 0.4
 
 target = None
 
-norm = 2
+norm = np.inf
 
-model_name = "Models/PPO_Medium.zip"
+model_name = "Models/L-Inf.zip"
 
 framework = "PPO"
 
 save_interval = 1000
 
-param_file = "Params/PPO_Medium.pkl"
+param_file = "Params/L-Inf.pkl"
 
 gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)
