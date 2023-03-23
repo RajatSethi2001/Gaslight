@@ -24,17 +24,19 @@ class ParamFinder:
         self.samples = samples
         self.timesteps = timesteps
 
-        #Retrieve existing parameters if they exist.
+        #Retrieve existing parameters if they exist. If not, create a new parameter file.
         if exists(param_file):
             self.study = pickle.load(open(self.param_file, 'rb'))
         else:
             self.study = optuna.create_study(direction="maximize")
 
+    #Main method for Optuna.
     def run(self):
         self.study.optimize(self.optimize_framework, n_trials=self.trials)
         pickle.dump(self.study, open(self.param_file, 'wb'))
     
     def get_ppo(self, trial):
+        #Possible hyperparameters for the PPO framework, as determined by RL-Zoo.
         batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256, 512])
         n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64, 128, 256, 512, 1024, 2048])
         gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
@@ -63,13 +65,14 @@ class ParamFinder:
         }
 
     def get_td3(self, trial):
+        #Possible hyperparameters for the TD3 framework, as determined by RL-Zoo.
         gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
         learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
         batch_size = trial.suggest_categorical("batch_size", [16, 32, 64, 100, 128])
         buffer_size = trial.suggest_categorical("buffer_size", [int(1e4), int(1e5), int(1e6)])
         tau = trial.suggest_categorical("tau", [0.001, 0.005, 0.01, 0.02, 0.05, 0.08])
 
-        train_freq = trial.suggest_categorical("train_freq", [8, 16, 32, 64, 128, 256, 512])
+        train_freq = trial.suggest_categorical("train_freq", [32, 64, 128, 256, 512])
         gradient_steps = train_freq
 
         noise_type = trial.suggest_categorical("noise_type", ["ornstein-uhlenbeck", "normal", None])
@@ -102,22 +105,30 @@ class ParamFinder:
         #Save the current study in the pickle file.
         pickle.dump(self.study, open(self.param_file, 'wb'))
 
+        #Create a new environment for the trial.
         env = GradientEnv(self.predict, self.extra, self.input_shape, self.input_range, self.max_delta, self.target, self.norm)
         
         if self.framework == "PPO":
             hyperparams = {}
             net_arch = dict(pi=[256, 256], vf=[256, 256])
             hyperparams['policy_kwargs'] = dict(net_arch=net_arch)
+
             #Guess the optimal hyperparameters for testing in this trial.
             hyperparams = self.get_ppo(trial)
+
+            #Make a temporary model for parameter tuning (or use an existing model).
             model = PPO("MlpPolicy", env, **hyperparams)
             if self.model_name is not None and exists(self.model_name):
                 model.set_parameters(self.model_name)
         
         elif self.framework == "TD3":
             hyperparams = {}
+            hyperparams['policy_kwargs'] = dict(net_arch=[256, 256])
+
             #Guess the optimal hyperparameters for testing in this trial.
             hyperparams = self.get_td3(trial)
+
+            #Make a temporary model for parameter tuning (or use an existing model).
             model = TD3("MlpPolicy", env, **hyperparams)
             if self.model_name is not None and exists(self.model_name):
                 model.set_parameters(self.model_name)
@@ -126,28 +137,43 @@ class ParamFinder:
             print(f"Framework {self.framework} does not exist. Available frameworks are (PPO, TD3)")
             exit()
 
-        #Return the best reward as the score for this trial.
+        #To measure the effectiveness of a trial, generate random test inputs to use for metric calculations.
         originals = [np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape) for _ in range(1000)]
+        #Gather the "true" labels for the testing data, used for untargeted attacks.
         true_labels = [self.predict(x, self.extra) for x in originals]
 
+        #Calculate maximum possible distortion. This helps calculate the reward such that less distortion yields higher rewards.
         self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, np.zeros(self.input_shape), self.norm)
+        
+        #Keep a running track of rewards per sample.
         rewards = []
 
+        #Run each sample, which trains the model for a certain amount then evaluates rewards.
         for _ in range(self.samples):
             #Run the trial for the designated number of timesteps.
             model.learn(self.timesteps, progress_bar=True)
+
+            #Calculate the average reward for each testing input.
             reward_avg = 0
             for idx in range(len(originals)):
+                #Estimate the optimal distortion/action based on the input.
                 action, _ = model.predict(originals[idx])
-                adv = np.clip(originals[idx] + action, self.input_range[0], self.input_range[1])
-                new_label = self.predict(adv, self.extra)
 
+                #Given an distortion, add it to the input and clip the parameters.
+                adv = np.clip(originals[idx] + action, self.input_range[0], self.input_range[1])
+
+                #Determine the label of the perturbed input.
+                new_label = self.predict(adv, self.extra)
+                
+                #If the perturbation yields the intended target label (or a different label for untargeted attacks).
                 if (self.target is None and new_label != true_labels[idx]) or (self.target is not None and new_label == self.target):
+                    #Calculate an aggregate score for the distortion, then set the reward to a value that is inversely proportional to the distortion.
                     reward_avg += self.max_reward - distance(adv, originals[idx], self.norm)
 
-            reward_avg /= len(originals)
+            #Add the average reward to the running list of metrics.
             rewards.append(reward_avg)
 
+        #The "score" for the trial is the slope of best fit, where y-axis represents rewards and the x-axis represents samples.
         x = list(range(self.samples))
         slope, _ = np.polyfit(x, rewards, 1)
         return slope
