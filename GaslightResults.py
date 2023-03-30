@@ -1,58 +1,64 @@
-import cv2
 import numpy as np
-import tensorflow as tf
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 
-from Classifiers.TorchCIFAR10 import Net
 from stable_baselines3 import PPO, TD3
 
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+    
 def distance(x_adv, x, norm=2):
     diff = x - x_adv
     diff_flat = diff.flatten()  
     return np.linalg.norm(diff_flat, norm)
 
-def gaslight_test_mnist(attacker_path, classifier_path, target, framework="PPO", max_queries=10):
-    attacker = PPO.load(attacker_path)
-    classifier = tf.keras.models.load_model(classifier_path)
+def validate_cifar10_pytorch(classifier_path):
+    model = Net()
+    state_dict = torch.load(classifier_path)
+    model.load_state_dict(state_dict)
+    model.eval()
 
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-    # x_test = [np.random.uniform(low=0, high=1, size=(28, 28, 1)) for _ in range(10000)]
-    x_test = [x.reshape((28, 28, 1)) / 255.0 for x in x_test]
-
-    l2_avg = 0
-    linf_avg = 0
-    query_avg = 0
-    successes = 0
-    for idx in range(len(x_test)):
-        if idx % 1000 == 0:
-            print(idx)
-        
-        # x = x_test[idx].reshape((28, 28, 1)) / 255.0
-        adv = np.copy(x_test[idx])
-
-        queries = 0
-        for _ in range(max_queries):
-            queries += 1
-            action, _ = attacker.predict(adv)
-            adv = np.clip(adv + action, 0, 1)
-            adv_input = adv.reshape((1, 28, 28, 1))
-            label = np.argmax(list(classifier(adv_input).numpy()[0]))
-
-            if (target is None and label != y_test[idx]) or (target is not None and label == target):
-                successes += 1
-                query_avg += queries
-                l2_avg += distance(adv, x_test[idx], 2)
-                linf_avg += distance(adv, x_test[idx], np.inf)
-                break
+    transform = transforms.Compose(
+        [transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     
-    print(f"Success Rate: {successes * 100 / len(x_test)}")
-    print(f"Query Average: {query_avg / successes}")
-    print(f"L2 Average: {l2_avg / successes}")
-    print(f"LInf Average: {linf_avg / successes}")
+    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                            download=True) 
 
-def cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max_queries=10):
+    successes = 0
+    with torch.no_grad():
+        for data in testset:
+            image, label = data
+            image_t = torch.unsqueeze(transform(image), 0)
+            outputs = model(image_t)
+
+            _, predictions = torch.max(outputs.data, 1)
+
+            if int(predictions[0]) == label:
+                successes += 1
+
+    print(successes * 100 / len(testset))
+
+def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max_queries=10):
     attacker = eval(f"{framework}.load(\"{attacker_path}\")")
 
     model = Net()
@@ -71,7 +77,6 @@ def cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max
     l2_avg = 0
     linf_avg = 0
     query_avg = 0
-    snapped = False
     with torch.no_grad():
         for data in testset:
             image, label = data
@@ -86,10 +91,6 @@ def cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max
                 _, predictions = torch.max(outputs.data, 1)
             
                 if (target is None and int(predictions[0]) != label) or (target is not None and int(predictions[0]) == target):
-                    if not snapped:
-                        cv2.imwrite("real.png", x * 255)
-                        cv2.imwrite("fake.png", x_adv * 255)
-                        snapped = True
                     successes += 1
                     query_avg += query
                     l2_avg += distance(x_adv, x, 2)
@@ -101,5 +102,5 @@ def cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max
     print(f"L2 Average: {l2_avg / successes}")
     print(f"LInf Average: {linf_avg / successes}")
 
-# gaslight_test_mnist("Models/PPO-L2.zip", "Classifiers/mnist", None, max_queries=1)
-cifar10_pytorch("Models/CIFAR10-TD3-TargetedFull.zip", "Classifiers/cifar_net.pth", 6, "TD3", 1)
+# validate_cifar10_pytorch("Classifiers/cifar_net.pth")
+gaslight_cifar10_pytorch("Models/CIFAR10-Attacker-Label0.zip", "Classifiers/cifar_net.pth", 0, "TD3", 5)

@@ -22,37 +22,35 @@ class GradientEnv(gym.Env):
         self.action_space = Box(low=-self.max_delta, high=self.max_delta, shape=input_shape, dtype=np.float32)
 
         #Generate a random input to train the model.
-        self.original = np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape)
+        self.input_array = np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape)
         
-        #Determine "true" label for training sample.
-        self.true_label = self.predict(self.original, self.extra)
-        
+        self.zeros = np.zeros(self.input_shape)
+
         #Calculate maximum possible distortion. This helps calculate the reward such that less distortion yields higher rewards.
-        self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, np.zeros(self.input_shape), self.norm)
+        self.max_distance = distance(np.ones(self.input_shape) * self.max_delta, self.zeros, self.norm)
 
     def step(self, action):
         #Given an distortion, add it to the input and clip the parameters.
-        adv = np.clip(self.original + action, self.input_range[0], self.input_range[1])
+        self.input_array = np.clip(self.input_array + action, self.input_range[0], self.input_range[1])
 
         #Determine the label of the perturbed input.
-        label = self.predict(adv, self.extra)
+        label = self.predict(self.input_array, self.extra)
 
         #By default, the reward is 0.
         reward = 0
         #If the perturbation yields the intended target label (or a different label for untargeted attacks).  
-        if (self.target is None and label != self.true_label) or (self.target is not None and label == self.target):
+        if label == self.target:
             #Calculate an aggregate score for the distortion, then set the reward to a value that is inversely proportional to the distortion.
-            reward = self.max_reward - distance(adv, self.original, self.norm)
+            reward = self.max_distance - distance(action, self.zeros, self.norm)
         
         #Return the outcome of the action. Each episode is always done after one step.
-        return adv, reward, True, {}
+        return self.input_array, reward, True, {}
 
     def reset(self):
         #At the beginning of each episode, create a new sample image and determine its class.
-        self.original = np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape)
-        self.true_label = self.predict(self.original, self.extra)
+        self.input_array = np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape)
 
-        return self.original
+        return self.input_array
 
     def render(self):
         pass

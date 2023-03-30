@@ -45,7 +45,7 @@ input_shape = (32, 32, 3)
 input_range = (0, 1)
 
 #Maximum deviation per input parameter in a single action.
-max_delta = 0.2
+max_delta = 0.3
 
 #Target label for attacking model to achieve. Corresponds with output from predict(). Set to None for an untargeted attack. 
 target = 0
@@ -63,6 +63,6 @@ framework = "TD3"
 save_interval = 1000
 
 #Parameter file that stores hyperparameters. Obtained from Optuna.py.
-param_file = "Params/CIFAR10-TD3-2.pkl"
+param_file = "Params/CIFAR10-TD3.pkl"
 
 gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)

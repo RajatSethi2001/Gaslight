@@ -64,7 +64,7 @@ input_shape = (32, 32, 3)
 input_range = (0, 1)
 
 #Maximum deviation per input parameter in a single action.
-max_delta = 0.2
+max_delta = 0.3
 
 #Target label for attacking model to achieve. Corresponds with output from predict(). Set to None for an untargeted attack. 
 target = 0
@@ -79,7 +79,7 @@ model_name = None
 framework = "TD3"
 
 #Parameter file that stores hyperparameters. Can also put an existing filepath to continue trials. Should be a .pkl file.
-param_file = "Params/CIFAR10-TD3-2.pkl"
+param_file = "Params/CIFAR10-TD3-New.pkl"
 
 #How many trials to run for this process. Each trial represents a new set of hyperparameters.
 trials = 20
