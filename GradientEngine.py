@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import time
+import torch.nn as nn
 
 from os.path import exists
 from GradientEnv import GradientEnv
@@ -81,11 +82,20 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
             hyperparams['gradient_steps'] = hyperparams['train_freq']
 
         #Create environment and model-saving callback.
-        env = GradientEnv(predict, extra, input_shape, input_range, max_delta, target, norm)
+        env_kwargs = {
+            "predict": predict,
+            "extra": extra,
+            "input_shape": input_shape,
+            "input_range": input_range,
+            "max_delta": max_delta,
+            "target": target,
+            "norm": norm
+        }
+        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
         checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
         #Create or load attack model.
-        model_attack = TD3("MlpPolicy", env, **hyperparams)
+        model_attack = TD3("MlpPolicy", vec_env, **hyperparams)
         if model_name is not None and exists(model_name):
             model_attack.set_parameters(model_name)
     

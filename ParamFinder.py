@@ -1,10 +1,12 @@
 import numpy as np
 import optuna
 import pickle
+import torch.nn as nn
 
 from GradientEnv import GradientEnv
 from os.path import exists
 from stable_baselines3 import PPO, TD3
+from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from utils import distance
 
@@ -38,9 +40,9 @@ class ParamFinder:
     def get_ppo(self, trial):
         #Possible hyperparameters for the PPO framework, as determined by RL-Zoo.
         batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256, 512])
-        n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64, 128, 256, 512, 1024, 2048])
+        n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64, 128])
         gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
-        learning_rate = trial.suggest_float("learning_rate", 1e-6, 5e-4, log=True)
+        learning_rate = trial.suggest_float("learning_rate", 1e-7, 1e-4, log=True)
         ent_coef = trial.suggest_float("ent_coef", 0.00000001, 0.1, log=True)
         clip_range = trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3, 0.4])
         n_epochs = trial.suggest_categorical("n_epochs", [1, 5, 10, 20])
@@ -67,15 +69,15 @@ class ParamFinder:
     def get_td3(self, trial):
         #Possible hyperparameters for the TD3 framework, as determined by RL-Zoo.
         gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
-        learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
-        batch_size = trial.suggest_categorical("batch_size", [16, 32, 64, 100, 128])
-        buffer_size = trial.suggest_categorical("buffer_size", [int(1e4), int(1e5), int(1e6)])
+        learning_rate = trial.suggest_float("learning_rate", 1e-6, 1e-1, log=True)
+        batch_size = trial.suggest_categorical("batch_size", [4, 8, 16, 32, 64, 128])
+        buffer_size = trial.suggest_categorical("buffer_size", [int(1e4), int(1e5)])
         tau = trial.suggest_categorical("tau", [0.001, 0.005, 0.01, 0.02, 0.05, 0.08])
 
-        train_freq = trial.suggest_categorical("train_freq", [32, 64, 128, 256, 512])
+        train_freq = trial.suggest_categorical("train_freq", [4, 8, 16, 32, 64, 128])
         gradient_steps = train_freq
 
-        noise_type = trial.suggest_categorical("noise_type", ["ornstein-uhlenbeck", "normal", None])
+        noise_type = trial.suggest_categorical("noise_type", ["ornstein-uhlenbeck", "normal"])
         noise_std = trial.suggest_float("noise_std", 0, 1)
 
         hyperparams = {
@@ -106,8 +108,16 @@ class ParamFinder:
         pickle.dump(self.study, open(self.param_file, 'wb'))
 
         #Create a new environment for the trial.
-        env = GradientEnv(self.predict, self.extra, self.input_shape, self.input_range, self.max_delta, self.target, self.norm)
-        
+        env_kwargs = {
+            "predict": self.predict,
+            "extra": self.extra,
+            "input_shape": self.input_shape,
+            "input_range": self.input_range,
+            "max_delta": self.max_delta,
+            "target": self.target,
+            "norm": self.norm
+        }
+        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
         if self.framework == "PPO":
             hyperparams = {}
             net_arch = dict(pi=[256, 256], vf=[256, 256])
@@ -117,7 +127,7 @@ class ParamFinder:
             hyperparams = self.get_ppo(trial)
 
             #Make a temporary model for parameter tuning (or use an existing model).
-            model = PPO("MlpPolicy", env, **hyperparams)
+            model = PPO("MlpPolicy", vec_env, **hyperparams)
             if self.model_name is not None and exists(self.model_name):
                 model.set_parameters(self.model_name)
         
@@ -129,7 +139,7 @@ class ParamFinder:
             hyperparams = self.get_td3(trial)
 
             #Make a temporary model for parameter tuning (or use an existing model).
-            model = TD3("MlpPolicy", env, **hyperparams)
+            model = TD3("MlpPolicy", vec_env, **hyperparams)
             if self.model_name is not None and exists(self.model_name):
                 model.set_parameters(self.model_name)
         

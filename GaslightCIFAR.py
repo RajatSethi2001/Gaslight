@@ -4,9 +4,7 @@ import torch
 import torchvision.transforms as transforms
 
 from Classifiers.TorchCIFAR10 import Net
-from ParamFinder import ParamFinder
-from PIL import Image
-from torchvision.models import resnet18, ResNet18_Weights
+from GradientEngine import gradientRun
 
 # #input_array - Array of values to be classified. Will have a shape of "input_shape" and range of "input_range"
 # #extra - Additional argument used to pass in any other values, like the classifier model.
@@ -40,23 +38,6 @@ model.eval()
 
 extra = {"model": model}
 
-# def predict(input_array, extra=None):
-#     victim = extra["victim"]
-#     preprocess = extra["preprocess"]
-#     pil_image = Image.fromarray(np.uint8(input_array * 255.0))
-#     input_tensor = preprocess(pil_image).unsqueeze(0)
-#     outputs = victim(input_tensor.float())
-#     _, predicted = torch.max(outputs.data, 1)
-#     return int(predicted[0])
-
-# weights = ResNet18_Weights.DEFAULT
-# model = resnet18(weights=weights)
-# model.eval()
-
-# preprocess = weights.transforms()
-
-# extra = {"victim": model, "preprocess": preprocess}
-
 #Shape of the classifier input.
 input_shape = (32, 32, 3)
 
@@ -72,26 +53,16 @@ target = 0
 #Norm value used to calculate reward. See np.linalg.norm(). For best results, do not set this to np.inf. 
 norm = 2
 
-#Find optimal hyperparameters for an already trained model to improve future iterations. If you don't have an existing model, set this to None (recommended).
-model_name = None
+#Name of the file to save attack model. Should be a .zip file. Set this to an existing filepath to continue training an old model. Set to None to not save the model.
+model_name = "Models/CIFAR10-TD3-Target0.zip"
 
 #RL Framework to train the model. Currently supports "PPO" and "TD3"
 framework = "TD3"
 
-#Parameter file that stores hyperparameters. Can also put an existing filepath to continue trials. Should be a .pkl file.
+#Frequency at which to save the model.
+save_interval = 1000
+
+#Parameter file that stores hyperparameters. Obtained from Optuna.py.
 param_file = "Params/CIFAR10-TD3-2.pkl"
 
-#How many trials to run for this process. Each trial represents a new set of hyperparameters.
-trials = 20
-
-#How many datapoints to collect per trial. Each datapoint yields metrics that represent the success of the attack.
-samples = 8
-
-#How many timesteps to run through per sample.
-timesteps = 1024
-
-if __name__=='__main__':
-    param_finder = ParamFinder(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, param_file, trials, samples, timesteps)
-    param_finder.run()
-
-
+gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)
