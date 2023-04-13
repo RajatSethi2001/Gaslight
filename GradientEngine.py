@@ -104,7 +104,7 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
         exit()
     
     #Generate 1000 random inputs for testing.
-    originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(1000)]
+    originals = [np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape) for _ in range(100)]
     
     #Determine "true" labels from testing inputs.
     true_labels = [predict(x, extra) for x in originals]
@@ -159,14 +159,19 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
 
         ax[0].plot(timesteps, l2_list)
         ax[0].set_title("L-2")
+        ax[0].set_xlabel("Timesteps")
 
         ax[1].plot(timesteps, linf_list)
         ax[1].set_title("L-Inf")
+        ax[1].set_xlabel("Timesteps")
 
         ax[2].plot(timesteps, success_list)
-        ax[2].set_title("Successes")
+        ax[2].set_title("Success Rate")
+        ax[2].set_xlabel("Timesteps")
 
         figure.canvas.draw()
         figure.canvas.flush_events()
         time.sleep(0.1)
+
+        plt.savefig(f"Graphs/Graph.png")
        

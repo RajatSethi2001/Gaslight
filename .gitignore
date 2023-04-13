@@ -1,3 +1,7 @@
 Classifiers/
 data/
 Models/
+Evaluation/
+__pycache__/
+Agents/
+benchtest.py

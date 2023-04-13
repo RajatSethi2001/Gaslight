@@ -23,6 +23,7 @@ class GradientEnv(gym.Env):
 
         #Generate a random input to train the model.
         self.input_array = np.random.uniform(low=input_range[0], high=input_range[1], size=input_shape)
+        self.true_label = self.predict(self.input_array, self.extra)
         
         self.zeros = np.zeros(self.input_shape)
 
@@ -39,9 +40,9 @@ class GradientEnv(gym.Env):
         #By default, the reward is 0.
         reward = 0
         #If the perturbation yields the intended target label (or a different label for untargeted attacks).  
-        if label == self.target:
+        if (self.target is None and label != self.true_label) or (self.target is not None and label == self.target):
             #Calculate an aggregate score for the distortion, then set the reward to a value that is inversely proportional to the distortion.
-            reward = self.max_distance - distance(action, self.zeros, self.norm)
+            reward = (self.max_distance - distance(action, self.zeros, self.norm))
         
         #Return the outcome of the action. Each episode is always done after one step.
         return self.input_array, reward, True, {}
@@ -49,6 +50,7 @@ class GradientEnv(gym.Env):
     def reset(self):
         #At the beginning of each episode, create a new sample image and determine its class.
         self.input_array = np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape)
+        self.true_label = self.predict(self.input_array, self.extra)
 
         return self.input_array
 

@@ -39,10 +39,10 @@ class ParamFinder:
     
     def get_ppo(self, trial):
         #Possible hyperparameters for the PPO framework, as determined by RL-Zoo.
-        batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256, 512])
-        n_steps = trial.suggest_categorical("n_steps", [8, 16, 32, 64, 128])
+        batch_size = trial.suggest_categorical("batch_size", [16, 32, 64, 128, 256])
+        n_steps = trial.suggest_categorical("n_steps", [16, 32, 64, 128, 256])
         gamma = trial.suggest_categorical("gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
-        learning_rate = trial.suggest_float("learning_rate", 1e-7, 1e-4, log=True)
+        learning_rate = trial.suggest_float("learning_rate", 1e-8, 2e-4, log=True)
         ent_coef = trial.suggest_float("ent_coef", 0.00000001, 0.1, log=True)
         clip_range = trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3, 0.4])
         n_epochs = trial.suggest_categorical("n_epochs", [1, 5, 10, 20])
@@ -117,7 +117,7 @@ class ParamFinder:
             "target": self.target,
             "norm": self.norm
         }
-        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
+        vec_env = make_vec_env(GradientEnv, 1, env_kwargs=env_kwargs)
         if self.framework == "PPO":
             hyperparams = {}
             net_arch = dict(pi=[256, 256], vf=[256, 256])
@@ -151,9 +151,10 @@ class ParamFinder:
         originals = [np.random.uniform(low=self.input_range[0], high=self.input_range[1], size=self.input_shape) for _ in range(1000)]
         #Gather the "true" labels for the testing data, used for untargeted attacks.
         true_labels = [self.predict(x, self.extra) for x in originals]
+        zeros = np.zeros(self.input_shape)
 
         #Calculate maximum possible distortion. This helps calculate the reward such that less distortion yields higher rewards.
-        self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, np.zeros(self.input_shape), self.norm)
+        self.max_reward = distance(np.ones(self.input_shape) * self.max_delta, zeros, self.norm)
         
         #Keep a running track of rewards per sample.
         rewards = []
@@ -178,7 +179,7 @@ class ParamFinder:
                 #If the perturbation yields the intended target label (or a different label for untargeted attacks).
                 if (self.target is None and new_label != true_labels[idx]) or (self.target is not None and new_label == self.target):
                     #Calculate an aggregate score for the distortion, then set the reward to a value that is inversely proportional to the distortion.
-                    reward_avg += self.max_reward - distance(adv, originals[idx], self.norm)
+                    reward_avg += (self.max_reward - distance(adv, originals[idx], self.norm))
 
             #Add the average reward to the running list of metrics.
             rewards.append(reward_avg)

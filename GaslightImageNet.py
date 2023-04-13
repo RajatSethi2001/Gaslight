@@ -4,7 +4,7 @@ import torchvision.transforms as transforms
 
 from Classifiers.TorchCIFAR10 import Net
 from GradientEngine import gradientRun
-from torchvision.models import efficientnet_v2_s
+from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
 # #input_array - Array of values to be classified. Will have a shape of "input_shape" and range of "input_range"
 # #extra - Additional argument used to pass in any other values, like the classifier model.
@@ -20,9 +20,7 @@ from torchvision.models import efficientnet_v2_s
 
 def predict(input_array, extra=None):
     victim = extra["model"]
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    transform = extra["transform"]
     
     with torch.no_grad():
         x = transform(input_array)
@@ -31,30 +29,34 @@ def predict(input_array, extra=None):
         _, predicted = torch.max(outputs.data, 1)
         return int(predicted[0])
 
-model = Net()
-state_dict = torch.load("./Classifiers/cifar10.pth")
-model.load_state_dict(state_dict)
+weights = MobileNet_V3_Small_Weights.DEFAULT
+model = mobilenet_v3_small(weights=weights)
 model.eval()
 
-extra = {"model": model}
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+extra = {"model": model, "transform": transform}
 
 #Shape of the classifier input.
-input_shape = (32, 32, 3)
+input_shape = (224, 224, 3)
 
 #Range of the inputs values. First value is min, second value is max. Preferably make this (0, 1) and scale in predict.
 input_range = (0, 1)
 
 #Maximum deviation per input parameter in a single action.
-max_delta = 0.10
+max_delta = 0.25
 
 #Target label for attacking model to achieve. Corresponds with output from predict(). Set to None for an untargeted attack. 
-target = 0
+target = None
 
 #Norm value used to calculate reward. See np.linalg.norm(). For best results, do not set this to np.inf. 
 norm = 2
 
 #Name of the file to save attack agent. Should be a .zip file. Set this to an existing filepath to continue training an old model. Set to None to not save the model.
-model_name = "Agents/CIFAR10-PPO-Targeted.zip"
+model_name = "Agents/ImageNet-PPO-Untargeted2.zip"
 
 #RL Framework to train the model. Currently supports "PPO" and "TD3"
 framework = "PPO"
