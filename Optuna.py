@@ -1,11 +1,8 @@
 import torch
-import torch.nn as nn
 import torchvision.transforms as transforms
 
 from Classifiers.TorchCIFAR10 import Net
 from ParamFinder import ParamFinder
-from PIL import Image
-from torchvision.models import efficientnet_v2_s
 
 def predict(input_array, extra=None):
     victim = extra["model"]

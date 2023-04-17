@@ -4,10 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import time
-import torch.nn as nn
 
 from os.path import exists
-from GradientEnv import GradientEnv
+from GaslightEnv import GaslightEnv
 from stable_baselines3 import PPO, TD3
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -27,7 +26,7 @@ class GaslightCheckpoint(CheckpointCallback):
                 self.model.save(self.rl_model)
         return True
     
-def gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework="PPO", save_interval=0, param_file=None):
+def gaslightRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework="PPO", save_interval=0, param_file=None):
     if framework == "PPO":
         hyperparams = {}
         net_arch = dict(pi=[256, 256], vf=[256, 256])
@@ -51,7 +50,7 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
             "target": target,
             "norm": norm
         }
-        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
+        vec_env = make_vec_env(GaslightEnv, 4, env_kwargs=env_kwargs)
         checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
         #Create or load attack model.
@@ -91,7 +90,7 @@ def gradientRun(predict, extra, input_shape, input_range, max_delta, target, nor
             "target": target,
             "norm": norm
         }
-        vec_env = make_vec_env(GradientEnv, 4, env_kwargs=env_kwargs)
+        vec_env = make_vec_env(GaslightEnv, 4, env_kwargs=env_kwargs)
         checkpoint_callback = GaslightCheckpoint(save_interval, model_name)
 
         #Create or load attack model.

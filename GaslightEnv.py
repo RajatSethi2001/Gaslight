@@ -1,11 +1,10 @@
 import gym
-import math
 import numpy as np
 
 from gym.spaces import Box
 from utils import distance
 
-class GradientEnv(gym.Env):
+class GaslightEnv(gym.Env):
     def __init__(self, predict, extra, input_shape, input_range, max_delta, target, norm=2):
         self.predict = predict
         self.extra = extra

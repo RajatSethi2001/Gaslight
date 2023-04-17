@@ -3,20 +3,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 
 from Classifiers.TorchCIFAR10 import Net
-from GradientEngine import gradientRun
-from torchvision.models import efficientnet_v2_s
-
-# #input_array - Array of values to be classified. Will have a shape of "input_shape" and range of "input_range"
-# #extra - Additional argument used to pass in any other values, like the classifier model.
-# #This function should return the top-1 output of the classifier. It can be any type, as long as "target" is a possible output and the type has a valid "==" operation.
-# def predict(input_array, extra=None):
-#     victim = extra["model"]
-#     input_reshaped = input_array.reshape((1,) + input_array.shape)
-#     label = np.argmax(list(victim(input_reshaped).numpy()[0]))
-#     return label
-
-# #Extra input for the predict function. Stores the classifier model so it doesn't have to be reloaded each iteration.
-# extra = {"model": tf.keras.models.load_model('Classifiers/cifar10')}
+from GaslightEngine import gaslightRun
 
 def predict(input_array, extra=None):
     victim = extra["model"]
@@ -65,4 +52,4 @@ save_interval = 1000
 #Parameter file that stores hyperparameters. Obtained from Optuna.py.
 param_file = "Params/PPO.pkl"
 
-gradientRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)
+gaslightRun(predict, extra, input_shape, input_range, max_delta, target, norm, model_name, framework, save_interval, param_file)

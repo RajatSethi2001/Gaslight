@@ -1,9 +1,8 @@
 import numpy as np
 import optuna
 import pickle
-import torch.nn as nn
 
-from GradientEnv import GradientEnv
+from GaslightEnv import GaslightEnv
 from os.path import exists
 from stable_baselines3 import PPO, TD3
 from stable_baselines3.common.env_util import make_vec_env
@@ -117,7 +116,7 @@ class ParamFinder:
             "target": self.target,
             "norm": self.norm
         }
-        vec_env = make_vec_env(GradientEnv, 1, env_kwargs=env_kwargs)
+        vec_env = make_vec_env(GaslightEnv, 1, env_kwargs=env_kwargs)
         if self.framework == "PPO":
             hyperparams = {}
             net_arch = dict(pi=[256, 256], vf=[256, 256])
