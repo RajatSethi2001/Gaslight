@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 import random
 import torch
@@ -30,53 +29,7 @@ class Net(nn.Module):
         x = self.fc3(x)
         return x
 
-def validate_imagenet():
-    weights = MobileNet_V3_Small_Weights.DEFAULT
-    model = mobilenet_v3_small(weights=weights)
-    model.eval()
-
-    tr = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-
-    testset = torchvision.datasets.ImageNet(root="./Classifiers/data", split="val")
-
-    successes = 0
-    total = 0
-    with torch.no_grad():
-        for image, label in testset:
-            tensor_input = tr(image)
-            tensor_input = torch.unsqueeze(tensor_input, 0)
-            outputs = model(tensor_input)
-            _, predictions = torch.max(outputs.data, 1)
-
-            if int(predictions[0]) == label:
-                successes += 1
-            
-            total += 1
-            if total % 10 == 0:
-                print(successes * 100 / total)
-
-    print(successes * 100 / len(testset))
-
-
-def validate_cifar10(classifier_path):
-    # model = efficientnet_v2_s()
-    # num_ftrs = model.classifier[1].in_features
-    # model.classifier = nn.Linear(num_ftrs, 10)
-
-    model = Net()
-    state_dict = torch.load(classifier_path)
-    model.load_state_dict(state_dict)
-    model.eval()
-
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    
+def validate_cifar10(model):
     testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                             download=True) 
 
@@ -84,7 +37,7 @@ def validate_cifar10(classifier_path):
     with torch.no_grad():
         for data in testset:
             image, label = data
-            image_t = torch.unsqueeze(transform(image), 0)
+            image_t = torch.unsqueeze(image, 0)
             outputs = model(image_t)
 
             _, predictions = torch.max(outputs.data, 1)
@@ -94,23 +47,10 @@ def validate_cifar10(classifier_path):
 
     print(successes * 100 / len(testset))
 
-def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="PPO", max_queries=10):
-    attacker = eval(f"{framework}.load(\"{attacker_path}\")")
-
-    model = Net()
-    state_dict = torch.load(classifier_path)
-    model.load_state_dict(state_dict)
-    model.eval()
-
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    
+def gaslight_cifar10_pytorch(attacker, classifier, target, max_queries=10):    
     testset = torchvision.datasets.CIFAR10(root='./Classifiers/data', train=False,
                                             download=True)
-    
-    examples = {}
-    
+        
     successes = 0
     l2 = []
     linf = []
@@ -120,7 +60,7 @@ def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="
         for idx in range(len(testset)):
             image, label = testset[idx]
             x = np.array(image) / 255.0
-            test_output = model(torch.unsqueeze(transform(x), 0).float())
+            test_output = classifier(torch.unsqueeze(x, 0).float())
             test_label = int(torch.max(test_output.data, 1)[1][0])
 
             if test_label == label:
@@ -129,8 +69,8 @@ def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="
                 for query in range(1, max_queries+1):
                     action, _ = attacker.predict(x_adv)
                     x_adv = np.clip(x_adv + action, 0, 1)
-                    x_input = torch.unsqueeze(transform(x_adv), 0)
-                    outputs = model(x_input.float())
+                    x_input = torch.unsqueeze(x_adv, 0)
+                    outputs = classifier(x_input.float())
                     _, predictions = torch.max(outputs.data, 1)
                     new_label = int(predictions[0])
                     if (target is None and new_label != label) or (target is not None and new_label == target):
@@ -139,9 +79,6 @@ def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="
                         l2_dist = distance(x_adv, x, 2)
                         l2.append(l2_dist)
                         linf.append(distance(x_adv, x, np.inf))
-
-                        if label not in examples or l2_dist < examples[label][2]:
-                            examples[label] = [(x * 255, label), (x_adv * 255, new_label), l2_dist]
                         break
                 
                 if valid_tests >= 1000:
@@ -155,28 +92,34 @@ def gaslight_cifar10_pytorch(attacker_path, classifier_path, target, framework="
     print(f"LInf Average: {np.mean(linf)}")
     print(f"LInf Median: {np.median(linf)}")
 
-    for _, v in examples.items():
-        cv2.imwrite(f"Evaluation/TargetedEx/Original{v[0][1]}.png", v[0][0])
-        cv2.imwrite(f"Evaluation/TargetedEx/Modified{v[0][1]}to{v[1][1]}.png", v[1][0])
+def validate_imagenet(model):
+    testset = torchvision.datasets.ImageNet(root="./Classifiers/data", split="val")
 
-def gaslight_imagenet(attacker_path, target, framework="PPO", max_queries=10):
-    attacker = eval(f"{framework}.load(\"{attacker_path}\")")
+    successes = 0
+    total = 0
+    with torch.no_grad():
+        for image, label in testset:
+            tensor_input = torch.unsqueeze(image, 0)
+            outputs = model(tensor_input)
+            _, predictions = torch.max(outputs.data, 1)
 
-    weights = MobileNet_V3_Small_Weights.DEFAULT
-    model = mobilenet_v3_small(weights=weights)
-    model.eval()
+            if int(predictions[0]) == label:
+                successes += 1
+            
+            total += 1
+            if total % 10 == 0:
+                print(successes * 100 / total)
 
-    tr1 = transforms.Compose([
+    print(successes * 100 / len(testset))
+
+def gaslight_imagenet(attacker, classifier, target, max_queries=10):
+    resize = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize(256),
         transforms.CenterCrop(224),
     ])
 
-    tr2 = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-
     testset = torchvision.datasets.ImageNet(root="./Classifiers/data", split="val")
-
-    examples = {}
 
     successes = 0
     l2 = []
@@ -186,9 +129,9 @@ def gaslight_imagenet(attacker_path, target, framework="PPO", max_queries=10):
     with torch.no_grad():
         for idx in [random.randint(0, len(testset) - 1) for _ in range(100)]:
             image, label = testset[idx]
-            x = tr1(image)
+            x = resize(image)
     
-            test_output = model(torch.unsqueeze(tr2(x), 0).float())
+            test_output = classifier(torch.unsqueeze(x, 0).float())
             test_label = int(torch.max(test_output.data, 1)[1][0])
 
             if test_label == label:
@@ -203,8 +146,8 @@ def gaslight_imagenet(attacker_path, target, framework="PPO", max_queries=10):
                     x_adv = np.clip(x_adv + action, 0, 1)
 
                     x_input = transforms.ToTensor()(x_adv)
-                    x_input = torch.unsqueeze(tr2(x_input), 0)
-                    outputs = model(x_input.float())
+                    x_input = torch.unsqueeze(x_input, 0)
+                    outputs = classifier(x_input.float())
                     _, predictions = torch.max(outputs.data, 1)
                     new_label = int(predictions[0])
                     if (target is None and new_label != label) or (target is not None and new_label == target):
@@ -213,9 +156,6 @@ def gaslight_imagenet(attacker_path, target, framework="PPO", max_queries=10):
                         l2_dist = distance(x_adv, x_np, 2)
                         l2.append(l2_dist)
                         linf.append(distance(x_adv, x_np, np.inf))
-
-                        if label not in examples or l2_dist < examples[label][2]:
-                            examples[label] = [(x_np * 255, label), (x_adv * 255, new_label), l2_dist]
                         break
                 
                 if valid_tests >= 10:
@@ -228,13 +168,3 @@ def gaslight_imagenet(attacker_path, target, framework="PPO", max_queries=10):
     print(f"L2 Median: {np.median(l2)}")
     print(f"LInf Average: {np.mean(linf)}")
     print(f"LInf Median: {np.median(linf)}")
-
-    for _, v in examples.items():
-        cv2.imwrite(f"Evaluation/ImageNetEx/Original{v[0][1]}.png", v[0][0])
-        cv2.imwrite(f"Evaluation/ImageNetEx/Modified{v[0][1]}to{v[1][1]}.png", v[1][0])
-
-
-# validate_cifar10("Classifiers/cifar10.pth")
-# gaslight_cifar10_pytorch("./Agents/CIFAR10-PPO-Targeted.zip", "./Classifiers/cifar10.pth", 0, "PPO", 5)
-# validate_imagenet()
-gaslight_imagenet("./Agents/ImageNet-PPO-Untargeted.zip", None, "PPO", 1)
